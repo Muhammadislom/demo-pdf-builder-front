@@ -3,7 +3,7 @@ import { useStore } from '../state/store.js'
 import { claimedBefore } from '../engine/renderModel.js'
 import { matchWithClaimState } from '../engine/rule.js'
 import { rowsFromMock } from '../engine/scalars.js'
-import { ROW_RULE_FIELDS, KIND_LABELS } from '../engine/catalog.js'
+import { kindLabel, dict } from '../engine/catalog.js'
 import { RULE_OPS as OPS } from '../engine/rule.js'
 
 const MODES = [
@@ -34,7 +34,11 @@ export default function RuleBuilder({ node, path, onChange }) {
   const setRule = (r) => onChange({ ...node, rule: r })
 
   const rows = useMemo(() => rowsFromMock(state.mock, state.doc), [state.mock, state.doc])
-  const typesByKind = useMemo(() => groupTypes(rows), [rows])
+  // Type chips come from the company's REAL accounting types (mock.types — the
+  // live CRUD dictionary), grouped by classification (L → Other pay, A →
+  // Deduction); rows-derived types fill in as a fallback for older backends.
+  const typesByKind = useMemo(() => groupTypes(rows, state.mock?.types), [rows, state.mock])
+  const d = dict(state.doc)
   const kindsPresent = useMemo(() => [...new Set(rows.map((r) => r.kind))], [rows])
 
   // Live row-match preview (respects earlier blocks' claims).
@@ -66,10 +70,10 @@ export default function RuleBuilder({ node, path, onChange }) {
       )}
 
       {mode === 'kind' && (
-        <KindPicker kinds={kindsPresent} value={leafValue(rule)} onChange={(vals) => setRule({ any: [{ field: 'kind', op: 'in', value: vals }] })} />
+        <KindPicker kinds={[...new Set([...d.kinds.map((k) => k.value), ...kindsPresent])]} value={leafValue(rule)} onChange={(vals) => setRule({ any: [{ field: 'kind', op: 'in', value: vals }] })} />
       )}
 
-      {mode === 'advanced' && <AdvancedRule rule={rule} onChange={setRule} rows={rows} />}
+      {mode === 'advanced' && <AdvancedRule rule={rule} onChange={setRule} rows={rows} fields={d.ruleFields} realTypes={state.mock?.types} />}
 
       <LivePreview preview={preview} />
     </div>
@@ -81,11 +85,19 @@ function leafValue(rule) {
   return Array.isArray(v) ? v : v != null ? [String(v)] : []
 }
 
-function groupTypes(rows) {
+function groupTypes(rows, realTypes) {
   const g = {}
+  // Real company types first (live dictionary): classification L → other_pay
+  // (company pays the driver), A → deduction (collections).
+  for (const t of realTypes || []) {
+    if (!t.code) continue
+    const kind = t.classification === 'L' ? 'other_pay' : 'deduction'
+    ;(g[kind] ||= new Map()).set(t.code, t.label || t.code)
+  }
   for (const r of rows) {
     if (!r.typeCode) continue
-    ;(g[r.kind] ||= new Map()).set(r.typeCode, r.label || r.typeCode)
+    const m = (g[r.kind] ||= new Map())
+    if (!m.has(r.typeCode)) m.set(r.typeCode, r.label || r.typeCode)
   }
   return Object.fromEntries(Object.entries(g).map(([k, m]) => [k, [...m.entries()].map(([code, label]) => ({ code, label }))]))
 }
@@ -103,7 +115,7 @@ function TypePicker({ typesByKind, value, onChange }) {
     <div className="type-picker">
       {entries.map(([kind, types]) => (
         <div key={kind} className="tp-group">
-          <div className="tp-kind">{KIND_LABELS[kind] || kind}</div>
+          <div className="tp-kind">{kindLabel(kind)}</div>
           <div className="tp-types">
             {types.map((t) => (
               <label key={t.code} className={`tp-chip ${set.has(t.code) ? 'on' : ''}`}>
@@ -119,7 +131,7 @@ function TypePicker({ typesByKind, value, onChange }) {
 }
 
 function KindPicker({ kinds, value, onChange }) {
-  const all = [...new Set(['other_pay', 'deduction', 'balance_entry', 'charge', ...kinds])]
+  const all = [...new Set(kinds)]
   const set = new Set(value)
   const toggle = (k) => {
     const next = new Set(set)
@@ -130,14 +142,14 @@ function KindPicker({ kinds, value, onChange }) {
     <div className="kind-picker">
       {all.map((k) => (
         <button key={k} className={`chip-btn ${set.has(k) ? 'on' : ''}`} onClick={() => toggle(k)}>
-          {KIND_LABELS[k] || k}
+          {kindLabel(k)}
         </button>
       ))}
     </div>
   )
 }
 
-function AdvancedRule({ rule, onChange, rows }) {
+function AdvancedRule({ rule, onChange, rows, fields, realTypes }) {
   const combinator = rule?.all ? 'all' : 'any'
   const leaves = rule?.[combinator] || []
   const setLeaves = (next) => onChange({ [combinator]: next })
@@ -162,12 +174,12 @@ function AdvancedRule({ rule, onChange, rows }) {
       {leaves.map((l, i) => (
         <div className="leaf-row" key={i}>
           <select value={l.field} onChange={(e) => changeField(i, e.target.value)}>
-            {ROW_RULE_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+            {fields.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
           <select value={l.op} onChange={(e) => changeOp(i, e.target.value)}>
             {OPS.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
-          <ValuePicker field={l.field} op={l.op} value={l.value} rows={rows} onChange={(v) => update(i, { value: v })} />
+          <ValuePicker field={l.field} op={l.op} value={l.value} rows={rows} realTypes={realTypes} onChange={(v) => update(i, { value: v })} />
           <button className="mini danger" onClick={() => remove(i)}>✕</button>
         </div>
       ))}
@@ -178,23 +190,23 @@ function AdvancedRule({ rule, onChange, rows }) {
 
 // valueOptionsFor returns the distinct values for a field from the sample rows,
 // so Advanced conditions pick real values instead of free text.
-function valueOptionsFor(field, rows) {
+function valueOptionsFor(field, rows, realTypes) {
   const uniq = (arr) => [...new Set(arr.filter(Boolean).map(String))]
   switch (field) {
-    case 'kind': return uniq([...rows.map((r) => r.kind), 'other_pay', 'deduction', 'balance_entry', 'charge'])
-    case 'typeCode': return uniq(rows.map((r) => r.typeCode))
-    case 'sourceKind': return uniq(rows.map((r) => r.sourceKind))
+    case 'kind': return uniq([...rows.map((r) => r.kind), 'other_pay', 'deduction', 'charge'])
+    case 'typeCode': return uniq([...(realTypes || []).map((t) => t.code), ...rows.map((r) => r.typeCode)])
+    case 'sourceKind': return uniq([...rows.map((r) => r.sourceKind), 'manual', 'statement'])
     case 'classification': return uniq([...rows.map((r) => r.classification), 'A', 'L'])
     case 'sign': return ['+', '-']
-    case 'typeId': return uniq(rows.map((r) => r.typeId))
+    case 'typeId': return uniq([...(realTypes || []).map((t) => t.id), ...rows.map((r) => r.typeId)])
     default: return []
   }
 }
 
 // ValuePicker: multiselect chips for in/notIn, single select for eq/ne. Opaque
 // typeId with no sample values falls back to a text input.
-function ValuePicker({ field, op, value, rows, onChange }) {
-  const options = valueOptionsFor(field, rows)
+function ValuePicker({ field, op, value, rows, realTypes, onChange }) {
+  const options = valueOptionsFor(field, rows, realTypes)
   const isList = op === 'in' || op === 'notIn'
 
   if (field === 'typeId' && options.length === 0) {

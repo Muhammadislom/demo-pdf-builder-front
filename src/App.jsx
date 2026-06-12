@@ -1,10 +1,11 @@
 import React, { useCallback, useState } from 'react'
 import { useStore } from './state/store.js'
-import { loadLayout, saveLayout, resetLayout, listLayouts, previewPdf } from './graphql/api.js'
-import { explodeNode } from './engine/catalog.js'
+import { loadLayout, saveLayout, resetLayout, listLayouts, previewPdf, loadCatalog } from './graphql/api.js'
+import { explodeNode, initCatalog, setActiveDoc, catalogSource } from './engine/catalog.js'
 import Palette from './palette/Palette.jsx'
 import Canvas from './canvas/Canvas.jsx'
 import Inspector from './inspector/Inspector.jsx'
+import PdfPreviewPanel from './preview/PdfPreviewPanel.jsx'
 
 // Known statement variants (DriverOwnership) + invoice hints, for the datalist.
 const VARIANT_HINTS = {
@@ -25,13 +26,22 @@ export default function App() {
   const { state, dispatch } = useStore()
   const { endpoint, jwt, doc, variant, status, isCustom, source, past, future } = state
   const [showJwt, setShowJwt] = useState(false)
+  const [showPdf, setShowPdf] = useState(false)
 
   const setStatus = (msg, kind) => dispatch({ type: 'STATUS', msg, kind })
 
   const onLoad = useCallback(async () => {
     setStatus('Loading…', 'info')
+    setActiveDoc(doc)
+    // Server-driven node catalog (palette / inspector / explode recipes) —
+    // loads in parallel with the layout; older backends without the query fall
+    // back to the bundled catalog (non-fatal).
+    const catalogP = loadCatalog(endpoint, jwt, doc)
+      .then((payload) => dispatch({ type: 'CATALOG_LOADED', doc, source: initCatalog(doc, payload) ? 'server' : 'bundled' }))
+      .catch(() => { initCatalog(doc, null); dispatch({ type: 'CATALOG_LOADED', doc, source: 'bundled' }) })
     try {
       const data = await loadLayout(endpoint, jwt, doc, variant)
+      await catalogP
       const root = normalizeTree(data.pdfLayout?.tree)
       const blocks = (root.children || []).length
       const src = data.pdfLayout?.source || 'system'
@@ -142,7 +152,14 @@ export default function App() {
       <header className="bar">
         <div className="bar-top">
           <div className="brand">PDF Layout Builder</div>
-          <select value={doc} onChange={(e) => dispatch({ type: 'SET_DOC', doc: e.target.value })}>
+          <select value={doc} onChange={(e) => {
+            const next = e.target.value
+            setActiveDoc(next)
+            setShowPdf(false) // the panel would render the OLD doc's tree under the new doc
+            dispatch({ type: 'SET_DOC', doc: next })
+            // chip reflects what the catalog actually resolves for the new doc
+            dispatch({ type: 'CATALOG_LOADED', doc: next, source: catalogSource(next) })
+          }}>
             <option value="statement">statement</option>
             <option value="invoice">invoice</option>
           </select>
@@ -158,6 +175,7 @@ export default function App() {
           <button onClick={onReset}>Reset</button>
           <button disabled={!state.mock} onClick={onCustomizeBody} title="Turn all system body blocks into editable blocks">Customize body</button>
           <button disabled={!state.mock} onClick={onPreview} title="Render the current tree through the REAL fpdf engine (no save needed)">Preview PDF</button>
+          <button disabled={!state.mock} className={showPdf ? 'primary' : ''} onClick={() => setShowPdf((v) => !v)} title="Live side-by-side PDF panel (debounced real backend render)">{showPdf ? 'Hide PDF panel' : 'PDF panel'}</button>
           <span className="sep" />
           <button disabled={!past.length} onClick={() => dispatch({ type: 'UNDO' })} title="Undo">↶</button>
           <button disabled={!future.length} onClick={() => dispatch({ type: 'REDO' })} title="Redo">↷</button>
@@ -189,11 +207,13 @@ export default function App() {
       <div className={`status ${status.kind}`}>
         {status.msg}
         {source && <span className="chip">{isCustom ? 'custom' : `fallback: ${source}`}</span>}
+        <span className="chip" title="Where the node palette/inspector schemas come from">catalog: {state.catalogSource}</span>
       </div>
 
-      <main className="panes">
+      <main className={`panes ${showPdf ? 'with-pdf' : ''}`}>
         <Palette />
         <Canvas />
+        {showPdf && <PdfPreviewPanel onClose={() => setShowPdf(false)} />}
         <Inspector />
       </main>
     </div>

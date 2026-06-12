@@ -1,5 +1,6 @@
 import React from 'react'
-import { ROW_COLUMN_FIELDS } from '../engine/catalog.js'
+import { useStore } from '../state/store.js'
+import { dict } from '../engine/catalog.js'
 
 const ALIGNS = ['L', 'R']
 // No per-column format control: Go rowFieldValue formats table cells strictly by
@@ -9,6 +10,8 @@ const ALIGNS = ['L', 'R']
 // ColumnsEditor edits a table node's operator-defined columns
 // (header / field / format / align / width). Stored in node.props.columns.
 export default function ColumnsEditor({ node, onChange }) {
+  const { state } = useStore()
+  const columnFields = dict(state.doc).columnFields
   const cols = node.props?.columns || []
   const setCols = (next) => onChange({ ...node, props: { ...(node.props || {}), columns: next } })
   const update = (i, patch) => setCols(cols.map((c, j) => (j === i ? { ...c, ...patch } : c)))
@@ -28,7 +31,7 @@ export default function ColumnsEditor({ node, onChange }) {
         <div className="col-row" key={i}>
           <input className="col-h" value={c.header || ''} placeholder="Header" onChange={(e) => update(i, { header: e.target.value })} />
           <select value={c.field || 'label'} onChange={(e) => update(i, { field: e.target.value })}>
-            {ROW_COLUMN_FIELDS.map((f) => <option key={f} value={f}>{f}</option>)}
+            {columnFields.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
           <select value={c.align || 'L'} onChange={(e) => update(i, { align: e.target.value })}>
             {ALIGNS.map((a) => <option key={a} value={a}>{a}</option>)}

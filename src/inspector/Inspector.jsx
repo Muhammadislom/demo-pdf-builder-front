@@ -14,6 +14,7 @@ import ChildrenEditor from './ChildrenEditor.jsx'
 import BindingEditor from './BindingEditor.jsx'
 import LabelOverrideEditor from './LabelOverrideEditor.jsx'
 import FieldEditor from './FieldEditor.jsx'
+import StyleEditor from './StyleEditor.jsx'
 
 // Inspector: edits the selected node. Every control is derived from the catalog
 // `accepts` flags, so the panel always matches what the engine supports.
@@ -32,7 +33,7 @@ export default function Inspector() {
   if (!node) {
     return <aside className="inspector"><div className="muted insp-empty">—</div></aside>
   }
-  const m = meta(node.type)
+  const m = meta(node.type, state.doc)
   const setNode = (next) => dispatch({ type: 'REPLACE_NODE', path: selected, node: next })
 
   return (
@@ -137,6 +138,12 @@ export default function Inspector() {
       {m.accepts?.width && (
         <Section title="Width (inside a row)">
           <WidthControl node={node} onChange={setNode} />
+        </Section>
+      )}
+
+      {(m.accepts?.style && m.styleSchema?.length > 0) && (
+        <Section title="Style (colors / size — optional, defaults = system look)">
+          <StyleEditor node={node} schema={m.styleSchema} onChange={setNode} />
         </Section>
       )}
 

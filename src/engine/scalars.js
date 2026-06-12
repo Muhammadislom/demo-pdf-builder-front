@@ -4,6 +4,7 @@
 // numbers in the real PDF.
 
 import { aggregate } from './aggregate.js'
+import { dict } from './catalog.js'
 
 // STATEMENT_SCALARS / INVOICE_SCALARS drive the picker chips. `group` is for UI
 // grouping; `desc` is the tooltip.
@@ -12,9 +13,11 @@ export const STATEMENT_SCALARS = [
   { name: 'netPay', group: 'Totals', desc: 'Net pay (canonical, backend-computed)' },
   { name: 'grandTotal', group: 'Totals', desc: 'Alias of netPay' },
   { name: 'tripsTotal', group: 'Totals', desc: 'Sum of trip earnings' },
-  { name: 'deductionsTotal', group: 'By kind', desc: '|Σ deduction rows| (magnitude)' },
-  { name: 'otherPayTotal', group: 'By kind', desc: 'Σ other_pay rows (effective)' },
-  { name: 'balanceTotal', group: 'By kind', desc: 'Σ balance_entry rows (effective)' },
+  { name: 'deductionsTotal', group: 'By kind', desc: '|Σ deduction rows| (collections)' },
+  { name: 'otherPayTotal', group: 'By kind', desc: 'Σ other_pay rows (payouts)' },
+  { name: 'payoutTotal', group: 'By kind', desc: 'Liability paydowns total (adds to pay)' },
+  { name: 'collectionTotal', group: 'By kind', desc: 'Asset paydowns total (subtracts)' },
+  { name: 'balanceTotal', group: 'Deprecated', desc: 'DEPRECATED alias: payout − collection' },
   { name: 'escrowBalance', group: 'Ledger', desc: 'Running ESCROW balance' },
   { name: 'openItems', group: 'Ledger', desc: 'Running OPEN_ITEMS balance' },
   { name: 'reimbursement', group: 'Ledger', desc: 'Running REIMBURSEMENT balance' },
@@ -34,9 +37,14 @@ export function scalarsForDoc(doc) {
 // (the formula DAG lets formulas reference each other). `selfId` excludes the
 // node being edited so it can't reference itself.
 export function scalarOptions(mock, doc, tree, selfId) {
-  const out = [...scalarsForDoc(doc)]
+  const serverScalars = dict(doc).scalars
+  const out = serverScalars ? [...serverScalars] : [...scalarsForDoc(doc)]
   if (doc !== 'invoice') {
-    for (const code of Object.keys(mock?.ledger || {})) {
+    // balance_<CODE> for every code the preview ledger carries AND every REAL
+    // accounting type of the company (mock.types — live CRUD dictionary).
+    const codes = new Set(Object.keys(mock?.ledger || {}))
+    for (const t of mock?.types || []) if (t.code) codes.add(t.code)
+    for (const code of codes) {
       out.push({ name: `balance_${code}`, group: 'Ledger by code', desc: `Running ${code} balance (all statements)` })
     }
   }
@@ -61,6 +69,8 @@ export const INVOICE_STRING_SOURCES = [
   'invoiceNumber', 'customerName', 'customerAddress', 'carrierName', 'loadNumber', 'invoiceDate', 'dueDate',
 ]
 export function stringSourcesForDoc(doc) {
+  const server = dict(doc).strings
+  if (server) return server.map((s) => s.name)
   return doc === 'invoice' ? INVOICE_STRING_SOURCES : STATEMENT_STRING_SOURCES
 }
 
@@ -128,14 +138,22 @@ export function buildVars(mock, doc) {
   const rows = rowsFromMock(mock, 'statement')
   const ledger = mock?.ledger || {}
   const byKind = (k, mode) => aggregate({ agg: 'sum', signMode: mode }, rows.filter((r) => r.kind === k))
+  // Mirror of Go stmtScalars post-20260710: payout = Σ other_pay (Liability
+  // paydowns), collection = |Σ deduction| (Asset paydowns); balanceTotal is a
+  // DEPRECATED alias = payout − collection (the old balance_entry rows no
+  // longer exist in live data).
+  const payout = byKind('other_pay', 'effective')
+  const collection = Math.abs(byKind('deduction', 'effective'))
   const vars = {
     grossTotal: num(s.grossTotal),
     netPay: num(s.netPay),
     grandTotal: num(s.grandTotal ?? s.netPay),
     tripsTotal: num(s.tripsTotal),
-    deductionsTotal: Math.abs(byKind('deduction', 'effective')),
-    otherPayTotal: byKind('other_pay', 'effective'),
-    balanceTotal: byKind('balance_entry', 'effective'),
+    deductionsTotal: collection,
+    otherPayTotal: payout,
+    payoutTotal: payout,
+    collectionTotal: collection,
+    balanceTotal: payout - collection,
     escrowBalance: num(ledger.ESCROW),
     openItems: num(ledger.OPEN_ITEMS),
     reimbursement: num(ledger.REIMBURSEMENT),

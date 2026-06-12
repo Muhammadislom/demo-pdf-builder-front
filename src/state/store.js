@@ -20,6 +20,7 @@ const initial = {
   theme: null, // round-tripped untouched so saving never NULLs stored theme/page
   page: null,
   savedVariants: [], // company's actually-saved variants (from listLayouts)
+  catalogSource: 'bundled', // 'server' once pdfNodeCatalog hydrates (chip)
   status: { msg: 'Set endpoint + JWT, then Load.', kind: 'info' },
   // history
   tree: T.emptyRoot(),
@@ -66,6 +67,9 @@ function reducer(state, action) {
       }
     case 'SET_VARIANTS':
       return { ...state, savedVariants: action.variants || [] }
+    case 'CATALOG_LOADED': // catalog hydration lives in engine/catalog.js (module state); this re-renders consumers + drives the chip
+      if (action.doc && action.doc !== state.doc) return state // late resolve from a previous doc click — ignore
+      return { ...state, catalogSource: action.source }
     case 'SELECT':
       return { ...state, selected: action.path }
     case 'REPLACE_NODE':

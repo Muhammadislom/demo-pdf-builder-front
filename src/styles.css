@@ -65,6 +65,7 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .status .chip { background: #eef1f6; color: var(--muted); border-radius: 10px; padding: 1px 8px; font-size: 11px; }
 
 .panes { flex: 1; display: grid; grid-template-columns: 230px 1fr 380px; min-height: 0; }
+.panes.with-pdf { grid-template-columns: 230px 1fr minmax(320px, 32%) 380px; }
 .palette, .inspector { background: var(--panel); overflow: auto; }
 .palette { border-right: 1px solid var(--line); }
 .inspector { border-left: 1px solid var(--line); }
@@ -90,17 +91,32 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .page {
   background: #fff; max-width: 720px; margin: 0 auto; min-height: 880px;
   box-shadow: 0 2px 14px rgba(20,40,80,.08); border: 1px solid var(--line); border-radius: 4px; padding: 22px;
+  /* card_design_v2 document palette (mirrors pdf_service.go col*) — scoped to
+     the page so builder chrome keeps its own colors. */
+  --d-ink: #0f172a; --d-muted: #64748b; --d-faint: #94a3b8; --d-line: #e2e8f0;
+  --d-blue: #2563eb; --d-green: #059669; --d-green-soft: #ecfdf5; --d-green-border: #a7f3d0;
+  --d-red: #dc2626; --d-amber: #b45309;
+  color: var(--d-ink);
 }
 .page-empty { text-align: center; padding: 60px 0; }
 .block-wrap { position: relative; display: flex; align-items: flex-start; gap: 4px; margin: 2px 0; }
 .block-wrap .grip { cursor: grab; color: #c0c8d4; user-select: none; padding: 4px 2px; }
 .block-wrap .block-body { flex: 1; min-width: 0; }
 
-.node { border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; cursor: pointer; }
-.node:hover { border-color: #dbe3ef; background: #fcfdff; }
-.node.selected { border-color: var(--blue); background: #f3f7ff; box-shadow: 0 0 0 1px var(--blue) inset; }
+/* Selection/hover are box-shadow only (no border, no padding) so selecting or
+   exploding a block NEVER shifts layout — exploded output sits pixel-identical
+   to the system block at rest. */
+.node { border: none; border-radius: 6px; padding: 0; cursor: pointer; }
+.node:hover { box-shadow: 0 0 0 1px #dbe3ef; background: #fcfdff; }
+.node.selected { box-shadow: 0 0 0 1.5px var(--blue); background: #f3f7ff; }
+/* Layout containers stay visually transparent even when selected — only the outline shows. */
+.node.row, .node.column { background: transparent; }
+.node.row:hover, .node.column:hover, .node.row.selected, .node.column.selected { background: transparent; }
+/* Content insets live on the content classes, not the selection wrapper. */
+.node.text, .node.field, .node.section-title, .node.list, .node.table, .node.value-box { padding: 2px 0; }
+.node.coarse { padding: 2px 0; }
 .node.divider hr { border: none; border-top: 1px solid var(--line); margin: 6px 0; }
-.node.section-title h3 { margin: 6px 0; font-size: 14px; }
+.node.section-title h3 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
 .node.text p { margin: 4px 0; color: #333; }
 .node.field .fld { padding: 2px 0; }
 .fld-heading { font-weight: 700; font-size: 14px; }
@@ -111,33 +127,50 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .sys-tag { font-size: 10px; font-weight: 700; color: #fff; background: #9aa6b6; border-radius: 4px; padding: 1px 5px; }
 .sys-name { font-weight: 600; }
 
-/* coarse system blocks — rendered from mock data, like the real PDF */
-.node.coarse { background: #fff; }
-.hdr-band { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; background: linear-gradient(90deg,#f3f7ff,#fbfcff); border-radius: 6px; border-left: 4px solid var(--blue); }
-.hb-left { display: flex; gap: 10px; align-items: center; }
-.hb-logo { width: 38px; height: 38px; border-radius: 8px; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 700; }
-.hb-name { font-weight: 700; font-size: 14px; }
-.hb-sub { font-size: 11px; color: var(--muted); }
-.hb-right { text-align: right; }
-.hb-plabel { font-size: 10px; letter-spacing: .05em; color: var(--muted); }
-.hb-period { font-weight: 600; }
-.drv-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; }
-.drv-av { width: 32px; height: 32px; border-radius: 50%; background: #e3ecff; color: var(--blue-d); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+/* coarse system blocks — card_design_v2, mirroring the production painters
+   (drawHeaderBandNew / drawDriverRowNew / drawMetricCards3 / drawTripsSection /
+   drawDeductionsSection / drawAccountBalanceCards). */
+.hdr2 { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0 6px; }
+.h2-name { font-weight: 700; font-size: 16px; color: var(--d-ink); }
+.h2-sub { font-size: 11px; color: var(--d-muted); }
+.h2-right { text-align: right; }
+.h2-plabel { font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--d-faint); }
+.h2-period { font-weight: 700; font-size: 14px; color: var(--d-ink); }
+.drv-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.drv-av { width: 32px; height: 32px; border-radius: 50%; background: #eff6ff; color: var(--d-blue); border: 1px solid var(--d-blue); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
 .drv-main { flex: 1; }
-.drv-name { font-weight: 600; }
+.drv-name { font-weight: 700; font-size: 15px; color: var(--d-ink); }
 .pill { background: #eef1f6; color: var(--muted); border-radius: 10px; padding: 1px 9px; font-size: 11px; }
+.pill2 { background: #eef1f6; color: var(--d-muted); border: 1px solid var(--d-line); border-radius: 10px; padding: 0 8px; font-size: 10.5px; margin-left: 8px; font-weight: 400; }
 .metric-strip, .footer-strip { display: flex; gap: 8px; }
-.mini-card { flex: 1; background: #f7f9fc; border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; display: flex; flex-direction: column; }
-.mini-card .mc-label { font-size: 10px; color: var(--muted); text-transform: uppercase; }
-.mini-card .mc-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.mini-card.blue { background: #eef4ff; }
-.mini-card.red .mc-value { color: var(--red); }
-.mini-card.green { background: #e9f7ee; }
-.mini-card.green .mc-value { color: var(--green); }
-.body2 { display: flex; gap: 14px; }
-.body2 .b2-col { flex: 1; min-width: 0; }
-.b2-route { font-size: 11px; color: var(--muted); }
+.mcard { flex: 1; background: #fff; border: 1px solid var(--d-line); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; }
+.mcard .mc-label { font-size: 10px; color: var(--d-faint); font-weight: 700; text-transform: uppercase; }
+.mcard .mc-value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mcard .mc-value.blue { color: var(--d-blue); }
+.mcard .mc-value.red { color: var(--d-red); }
+.mcard .mc-value.green { color: var(--d-green); }
+.mcard .mc-sub { font-size: 10.5px; color: var(--d-muted); }
+.mcard.netpay { background: var(--d-green-soft); border-color: var(--d-green-border); }
+.mcard.netpay .mc-label { color: var(--d-green); }
+/* full-width trips + deductions sections */
+.trips2, .ded2 { padding: 4px 0; }
+.d2-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.d2-title { font-weight: 700; font-size: 13.5px; color: var(--d-ink); }
+.d2-hint { font-size: 11px; color: var(--d-muted); }
+.trips-table .t2-load { color: var(--d-blue); font-weight: 700; }
+.cfg-table td.b { font-weight: 700; }
+.cfg-table tr.t2-total td { font-weight: 700; border-bottom: none; color: var(--d-ink); }
+.d2-total { display: flex; justify-content: space-between; font-weight: 700; padding: 5px 0 2px; margin-top: 3px; border-top: 2px solid var(--d-ink); }
+.d2-total .neg { color: var(--d-red); }
+/* account balance cards */
+.bal-strip { display: flex; gap: 8px; }
+.bal-card { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--d-line); border-radius: 6px; padding: 9px 10px; }
+.bc-left b { font-size: 12px; color: var(--d-ink); }
+.bc-val { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--d-ink); }
+.bc-val.amber { color: var(--d-amber); }
+.bc-val.neg { color: var(--d-red); }
 .coarse-note { padding: 8px 10px; background: #f7f9fc; border: 1px dashed var(--line); border-radius: 6px; }
+.unknown-card { padding: 8px 10px; background: #fbfcfe; border: 1px dashed #c7cfdb; border-radius: 6px; }
 
 .list-title { font-weight: 600; margin-bottom: 4px; }
 .list-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-bottom: 1px dotted #eef1f6; }
@@ -148,6 +181,7 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .lr-amt.neg { color: var(--red); }
 .lr-amt.pos { color: var(--green); }
 .list-total { display: flex; justify-content: space-between; font-weight: 700; padding-top: 4px; }
+.list-total-box { background: #fef2f2; color: var(--d-red, #dc2626); border: 1px solid currentColor; border-radius: 5px; padding: 5px 8px; margin-top: 5px; }
 .empty-rows { padding: 4px 0; }
 
 .cfg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -160,15 +194,17 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .vb-value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .vb-meta { }
 
-.node.metric { background: #f7f9fc; }
-.node.metric.accent { background: var(--blue); color: #fff; }
-.node.metric.accent .mc-label, .node.metric.accent .mc-sub { color: #dbe7ff; }
+.node.metric { background: #fff; border: 1px solid var(--d-line); border-radius: 6px; padding: 7px 9px; }
+.node.metric .mc-value { color: var(--d-ink); }
+.node.metric.accent { background: var(--d-green-soft); border-color: var(--d-green-border); }
+.node.metric.accent .mc-value { color: var(--d-green); }
+.node.metric.accent .mc-label, .node.metric.accent .mc-sub { color: var(--d-muted); }
 .mc { display: flex; flex-direction: column; }
 .mc-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
 .mc-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mc-sub { font-size: 11px; color: var(--muted); }
 
-.lay-row { display: flex; gap: 8px; }
+.lay-row { display: flex; gap: 14px; }
 .lay-cell { min-width: 0; }
 .lay-col { display: flex; flex-direction: column; gap: 4px; }
 
@@ -249,3 +285,18 @@ code { font-family: var(--mono); background: #eef1f6; padding: 1px 4px; border-r
 .lo-row input { flex: 1; }
 .lo-code { background: #eef1f6; border-radius: 4px; padding: 1px 5px; }
 .binding-editor .field { margin-bottom: 4px; }
+
+/* ---- hybrid PDF preview panel ---- */
+.pdf-panel { border-left: 1px solid var(--line); background: #2b2f36; display: flex; flex-direction: column; min-width: 0; }
+.pdf-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12px; }
+.pdf-panel-body { position: relative; flex: 1; min-height: 0; }
+.pdf-panel-body iframe { width: 100%; height: 100%; border: none; display: block; }
+.pdf-panel-body.stale iframe { opacity: .45; }
+.pdf-spin { position: absolute; top: 8px; right: 10px; background: rgba(255,255,255,.92); border-radius: 12px; padding: 2px 10px; font-size: 11px; color: var(--muted); }
+.pdf-err { padding: 10px; color: #ffb4b4; font-size: 12px; }
+.pdf-empty { display: grid; place-items: center; height: 100%; color: #9aa4b2; font-size: 12px; }
+
+/* ---- style editor ---- */
+.style-editor .field input[type=color] { padding: 1px 2px; width: 36px; height: 26px; }
+.style-color { display: flex; gap: 4px; align-items: center; }
+.style-color input[type=text] { flex: 1; font-family: var(--mono); font-size: 11.5px; }

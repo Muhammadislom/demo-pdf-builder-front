@@ -8,21 +8,24 @@ import { getNode } from '../state/tree.js'
 // selected and accepts children; otherwise the page root.
 export default function Palette() {
   const { state, dispatch } = useStore()
-  const { doc, selected, tree } = state
+  const { doc, selected, tree, catalogSource } = state
   const [q, setQ] = useState('')
 
-  const groups = useMemo(() => paletteFor(doc), [doc])
+  // catalogSource is the React-visible signal that the server catalog hydrated
+  // (the catalog itself is module state) — without it the memo would serve the
+  // bundled palette for the whole session.
+  const groups = useMemo(() => paletteFor(doc), [doc, catalogSource])
 
   // Determine insertion target path.
   const target = useMemo(() => {
     if (selected) {
       const node = getNode(tree, selected)
-      if (node && meta(node.type).accepts?.children) return selected
+      if (node && meta(node.type, doc).accepts?.children) return selected
     }
     return [] // root
   }, [selected, tree])
 
-  const targetLabel = target.length ? `${meta(getNode(tree, target)?.type).label}` : 'page root'
+  const targetLabel = target.length ? `${meta(getNode(tree, target)?.type, doc).label}` : 'page root'
 
   const add = (m) => {
     const node = m.make(doc)

@@ -123,9 +123,12 @@ describe('scalars (statement)', () => {
     const v = buildVars(mock, 'statement')
     expect(v.grossTotal).toBe(7436)
     expect(v.netPay).toBe(3476.31)
-    expect(Number(v.deductionsTotal.toFixed(2))).toBe(1671.69) // magnitude
+    expect(Number(v.deductionsTotal.toFixed(2))).toBe(1671.69) // |Σ deduction| (collections)
     expect(v.otherPayTotal).toBe(175)
-    expect(v.balanceTotal).toBe(-300)
+    expect(v.payoutTotal).toBe(175)
+    expect(Number(v.collectionTotal.toFixed(2))).toBe(1671.69)
+    // post-20260710: balanceTotal is the DEPRECATED alias payout − collection
+    expect(Number(v.balanceTotal.toFixed(2))).toBe(-1496.69)
     expect(v.escrowBalance).toBe(300)
     expect(v.openItems).toBe(-425)
   })
@@ -215,21 +218,30 @@ describe('explodeNode turns system blocks into editable fine nodes', () => {
   const RENDERABLE = new Set(['row', 'column', 'table', 'list', 'metric_card', 'section_title', 'field', 'text', 'aggregate', 'computed_value', 'divider'])
   const walk = (n, fn) => { fn(n); (n.children || []).forEach((c) => walk(c, fn)) }
 
-  it('metric_row -> row of 4 metric_cards with numeric widths', () => {
+  it('metric_row -> row of 3 metric_cards (card_design_v2: GROSS/DEDUCTIONS/NET PAY)', () => {
     const out = explodeNode({ type: 'metric_row' }, 'statement')
     expect(out).toHaveLength(1)
     expect(out[0].type).toBe('row')
-    expect(out[0].children).toHaveLength(4)
+    expect(out[0].children).toHaveLength(3)
     out[0].children.forEach((c) => { expect(c.type).toBe('metric_card'); expect(typeof c.width).toBe('number') })
+    expect(out[0].children.map((c) => c.props.source)).toEqual(['grossTotal', 'deductionsTotal', 'netPay'])
   })
-  it('body_two_col -> row[column|column] of renderable nodes', () => {
+  it('body_two_col -> stacked full-width trips + deductions sections (card_design_v2)', () => {
     const out = explodeNode({ type: 'body_two_col' }, 'statement')
-    expect(out[0].type).toBe('row')
-    expect(out[0].children.map((c) => c.type)).toEqual(['column', 'column'])
-    walk(out[0], (n) => {
+    expect(out.map((n) => n.type)).toEqual(['section_title', 'table', 'section_title', 'list'])
+    expect(out[1].binding?.source).toBe('trips')
+    expect(out[3].rule.any[0].value).toEqual(['deduction'])
+    out.forEach((root) => walk(root, (n) => {
       expect(RENDERABLE.has(n.type)).toBe(true)
       if (n.width != null) expect(typeof n.width).toBe('number') // never an object (Go wire format)
-    })
+    }))
+  })
+  it('new system sections explode (trips/deductions/account balance)', () => {
+    expect(explodeNode({ type: 'trips_section' }, 'statement').map((n) => n.type)).toEqual(['section_title', 'table'])
+    expect(explodeNode({ type: 'deductions_section' }, 'statement').map((n) => n.type)).toEqual(['section_title', 'list'])
+    const bal = explodeNode({ type: 'account_balance_cards' }, 'statement')
+    expect(bal[0].type).toBe('row')
+    expect(bal[0].children).toHaveLength(3)
   })
   it('every exploded node carries an id and no object widths', () => {
     for (const t of ['metric_row', 'footer_cards', 'body_two_col']) {

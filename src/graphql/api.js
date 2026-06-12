@@ -45,6 +45,10 @@ query($doc: PdfDocKind!, $tree: JSON!) {
 
 const Q_LAYOUTS = `query($doc: PdfDocKind!) { pdfLayouts(document: $doc) { id document variant version updatedAt } }`
 
+// Server-driven node catalog (newer backends). Older backends without the
+// query → the caller falls back to the bundled catalog.
+const Q_CATALOG = `query($doc: PdfDocKind!) { pdfNodeCatalog(document: $doc) }`
+
 const M_SAVE = `
 mutation($in: SavePdfLayoutInput!) {
   savePdfLayout(input: $in) { id document variant version }
@@ -70,4 +74,8 @@ export async function resetLayout(endpoint, jwt, doc, variant) {
 export async function previewPdf(endpoint, jwt, doc, tree) {
   const d = await gql(endpoint, jwt, Q_PREVIEW, { doc, tree })
   return d.pdfLayoutPreviewPdf // base64 string
+}
+export async function loadCatalog(endpoint, jwt, doc) {
+  const d = await gql(endpoint, jwt, Q_CATALOG, { doc })
+  return d.pdfNodeCatalog
 }

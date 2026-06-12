@@ -27,6 +27,31 @@ export default function PropsEditor({ node, schema, onChange }) {
                 </select>
               </label>
             )
+          case 'number':
+            // defaultValue + blur-commit: clamping per keystroke makes values
+            // whose first digit is below min untypeable.
+            return (
+              <label key={f.key} className="field">
+                <span>{f.label}</span>
+                <input type="number" min={f.min} max={f.max} step="0.5" defaultValue={v ?? ''}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }}
+                  onBlur={(e) => {
+                    if (e.target.value === '') { const next = { ...props }; delete next[f.key]; onChange({ ...node, props: next }); return }
+                    let n = Number(e.target.value)
+                    if (!Number.isFinite(n)) return
+                    if (f.min != null) n = Math.max(f.min, n)
+                    if (f.max != null) n = Math.min(f.max, n)
+                    set(f.key, n)
+                  }} />
+              </label>
+            )
+          case 'color':
+            return (
+              <label key={f.key} className="field">
+                <span>{f.label}</span>
+                <input type="color" value={v || '#000000'} onChange={(e) => set(f.key, e.target.value)} />
+              </label>
+            )
           case 'multiline':
             return (
               <label key={f.key} className="field wide">
