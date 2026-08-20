@@ -92,6 +92,7 @@ export const CATALOG = {
   metric_row: sys('metric_row', 'System', ['statement'], 'GROSS / DEDUCTIONS / NET PAY cards', { explodable: true }),
   trips_section: sys('trips_section', 'System', ['statement'], 'Full-width trips table (loaded/empty miles, totals)', { explodable: true }),
   deductions_section: sys('deductions_section', 'System', ['statement'], 'Full-width deductions list with total', { explodable: true }),
+  other_pay_section: sys('other_pay_section', 'System', ['statement'], 'Full-width other-pay list with total', { explodable: true }),
   account_balance_cards: sys('account_balance_cards', 'System', ['statement'], 'Open Items / Balance owed / Escrow cards', { explodable: true }),
   // Legacy aliases (pre-card-design saved layouts): still render — the engine
   // maps them onto the new sections — but are hidden from the palette.
@@ -325,6 +326,12 @@ function bundledExplode(node, doc) {
         titleNode('Deductions'),
         { type: 'list', id: uid('list'), props: { title: '', signMode: 'effective', showTotal: true },
           rule: { any: [{ field: 'kind', op: 'in', value: ['deduction'] }] } },
+      ]
+    case 'other_pay_section':
+      return [
+        titleNode('Other pay'),
+        { type: 'list', id: uid('list'), props: { title: '', signMode: 'effective', showTotal: true },
+          rule: { any: [{ field: 'kind', op: 'in', value: ['other_pay'] }] } },
       ]
     case 'account_balance_cards':
       return [{ type: 'row', id: uid('row'), children: [

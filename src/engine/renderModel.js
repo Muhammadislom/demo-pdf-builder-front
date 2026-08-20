@@ -14,10 +14,11 @@ import { collectComputed } from '../state/tree.js'
 // the row-pool, so they are NOT claimers.
 const COARSE_CLAIMERS = new Set(['body_two_col', 'invoice_charges'])
 // card_design_v2: the full-width deductions section claims DEDUCTION rows only
-// (mirrors drawDeductionsSection rendering d.Deductions); other_pay rows that
-// no custom block claims correctly surface as orphans — the real PDF does not
-// render them either.
+// (mirrors drawDeductionsSection rendering d.Deductions); the other-pay section
+// claims OTHER_PAY rows (mirrors drawOtherPaySection rendering d.OtherPay). Rows
+// no block claims surface as orphans — the real PDF does not render them either.
 const DEDUCTIONS_RULE = { any: [{ field: 'kind', op: 'in', value: ['deduction', 'balance_entry'] }] }
+const OTHER_PAY_RULE = { any: [{ field: 'kind', op: 'in', value: ['other_pay'] }] }
 
 function isRowList(node) {
   if (node.type === 'list' || node.type === 'rows') return true
@@ -32,6 +33,7 @@ function isRowList(node) {
 function claimFor(node, rows, claimed) {
   if (COARSE_CLAIMERS.has(node.type)) return claim(null, rows, claimed)
   if (node.type === 'deductions_section') return claim(DEDUCTIONS_RULE, rows, claimed)
+  if (node.type === 'other_pay_section') return claim(OTHER_PAY_RULE, rows, claimed)
   if (isRowList(node)) return claim(node.rule, rows, claimed)
   return null
 }

@@ -76,6 +76,10 @@ export default function NodePreview({ node, path, model, doc, mock, selected, on
       const rows = model.assign[key] || []
       return wrap('coarse', <DeductionsSection rows={rows} />)
     }
+    case 'other_pay_section': {
+      const rows = model.assign[key] || []
+      return wrap('coarse', <OtherPaySection rows={rows} />)
+    }
     case 'account_balance_cards': {
       const s = model.scalars
       return wrap('coarse', (
@@ -385,6 +389,29 @@ function DeductionsSection({ rows }) {
       <div className="d2-total">
         <span>Total deductions</span>
         <span className="neg">{money(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+function OtherPaySection({ rows }) {
+  const total = rows.reduce((acc, r) => acc + (Number(r.total) || 0) * signMul(r), 0)
+  return (
+    <div className="ded2">
+      <div className="d2-head">
+        <span className="d2-title">Other pay</span>
+        <span className="d2-hint">{rows.length} items</span>
+      </div>
+      {rows.length === 0 && <div className="muted small">No other pay this period</div>}
+      {rows.map((r, i) => (
+        <div className="list-row" key={i}>
+          <div className="lr-main"><span className="lr-label">{labelFor(r)}</span>{r.note && <span className="lr-note">{r.note}</span>}</div>
+          <span className={`lr-amt ${r.total * signMul(r) < 0 ? 'neg' : 'pos'}`}>{money(r.total * signMul(r))}</span>
+        </div>
+      ))}
+      <div className="d2-total">
+        <span>Total other pay</span>
+        <span className="pos">{money(total)}</span>
       </div>
     </div>
   )
